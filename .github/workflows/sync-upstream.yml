@@ -1,0 +1,43 @@
+name: Sync upstream
+
+on:
+  schedule:
+    # Every 6 hours. Scheduled workflows use UTC by default.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync main branch from upstream fork parent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          http_code="$(curl --silent --show-error --location \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${REPOSITORY}/merge-upstream" \
+            --data '{"branch":"main"}')"
+
+          cat "$response_file"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "Upstream sync failed with HTTP ${http_code}."
+            exit 1
+          fi
